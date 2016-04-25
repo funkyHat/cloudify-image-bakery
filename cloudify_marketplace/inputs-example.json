@@ -4,7 +4,7 @@
 
   "aws_access_key": "YOUR AWS ACCESS KEY",
   "aws_secret_key": "YOUR AWS SECRET KEY",
-  "aws_source_ami": "ami-91feb7fb",
+  "aws_source_ami": "YOUR CENTOS 7 AMI",
 
   "openstack_ssh_keypair_name": "YOUR SSH KEYPAIR ON OPENSTACK",
   "openstack_availability_zone": "OPENSTACK AVAILABILITY ZONE",
