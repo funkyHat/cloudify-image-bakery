@@ -20,6 +20,10 @@
     "vsphere_vm_ip_address": "VSPHERE VM IP NOT SET",
     "vsphere_vm_ssh_username": "centos",
     "vsphere_vm_ssh_password": "VSPHERE VM SSH PASSWORD NOT SET",
+    "cloudify_manager_username": "cloudify",
+    "cloudify_manager_password": "cloudify",
+    "cloudify_broker_username": "cloudify",
+    "cloudify_broker_password": "cloudify",
     "cloudify_version": "{{user `cloudify_version`}}"
   },
   "builders": [
@@ -112,7 +116,13 @@
     },
     {
       "type": "shell",
-      "environment_vars": "CORE_TAG_NAME={{user `cloudify_version`}}",
+      "environment_vars": [
+        "CORE_TAG_NAME={{user `cloudify_version`}}",
+        "CLOUDIFY_MANAGER_USERNAME={{user `cloudify_manager_username`}}",
+        "CLOUDIFY_MANAGER_PASSWORD={{user `cloudify_manager_password`}}",
+        "CLOUDIFY_BROKER_USERNAME={{user `cloudify_broker_username`}}",
+        "CLOUDIFY_BROKER_PASSWORD={{user `cloudify_broker_password`}}"
+      ],
       "script": "provision/bootstrap_simple"
     },
     {
