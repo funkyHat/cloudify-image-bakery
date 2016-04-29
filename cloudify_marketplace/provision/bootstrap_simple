@@ -55,19 +55,19 @@ private_ip: 127.0.0.1
 ssh_user: ${USER}
 ssh_key_filename: /home/${USER}/.ssh/id_rsa
 
-security_enabled: true
-ssl_enabled: true
-insecure_endpoints_disabled: true
+security_enabled: ${CLOUDIFY_MANAGER_SECURITY_ENABLED}
+ssl_enabled: ${CLOUDIFY_MANAGER_SECURITY_ENABLED}
+insecure_endpoints_disabled: ${CLOUDIFY_MANAGER_SECURITY_ENABLED}
 admin_username: ${CLOUDIFY_MANAGER_USERNAME}
 admin_password: ${CLOUDIFY_MANAGER_PASSWORD}
 
+rabbitmq_ssl_enabled: ${CLOUDIFY_MANAGER_SECURITY_ENABLED}
 rabbitmq_cert_private: |
 ${broker_cert_private}
 rabbitmq_cert_public: |
 ${broker_cert_public}
 rabbitmq_username: ${CLOUDIFY_BROKER_USERNAME}
-rabbitmq_password: ${CLOUDIFY_BROKER_PASSWORD}
-rabbitmq_ssl_enabled: true" > /tmp/bootstrap_inputs.yaml
+rabbitmq_password: ${CLOUDIFY_BROKER_PASSWORD}" > ~/cloudify//bootstrap_inputs.yaml
 }
 
 function generate_certs
@@ -105,20 +105,19 @@ function bootstrap
   pushd $CFY_ENV
   echo "preparing to bootstrap..."
   create_broker_certs
+  create_manager_certs
   create_inputs
 
   # Set env vars so that the test of manager provisioning will succeed
   export CLOUDIFY_USERNAME=${CLOUDIFY_MANAGER_USERNAME}
   export CLOUDIFY_PASSWORD=${CLOUDIFY_MANAGER_PASSWORD}
 
-  create_manager_certs
-
   echo "bootstrapping..."
   # bootstrap the manager locally
   PATH=$CFY_VENV/bin:PATH $CFY_VENV/bin/cfy bootstrap -v --install-plugins \
       --keep-up-on-failure \
       -p cloudify-manager-blueprints/simple-manager-blueprint.yaml \
-      -i /tmp/bootstrap_inputs.yaml
+      -i ~/cloudify//bootstrap_inputs.yaml
   if [ "$?" -ne "0" ]; then
     echo "Bootstrap failed, stopping provision."
     exit 1
