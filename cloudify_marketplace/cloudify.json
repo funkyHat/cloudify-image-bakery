@@ -140,7 +140,10 @@
       "environment_vars": [
         "BLUEPRINT_PATH=/opt/cloudify_configuration",
         "BLUEPRINT_FILE_NAME_PREFIX=configure",
-        "BLUEPRINT_NAME=CloudifySettings"
+        "BLUEPRINT_NAME=CloudifySettings",
+        "CLOUDIFY_MANAGER_USERNAME={{user `cloudify_manager_username`}}",
+        "CLOUDIFY_MANAGER_PASSWORD={{user `cloudify_manager_password`}}",
+        "CLOUDIFY_MANAGER_SECURITY_ENABLED={{user `cloudify_manager_security_enabled`}}"
       ]
     },
     {
@@ -155,6 +158,11 @@
     {
       "type": "shell",
       "script": "provision/set_manager_context",
+      "environment_vars": [
+        "CLOUDIFY_MANAGER_USERNAME={{user `cloudify_manager_username`}}",
+        "CLOUDIFY_MANAGER_PASSWORD={{user `cloudify_manager_password`}}",
+        "CLOUDIFY_MANAGER_SECURITY_ENABLED={{user `cloudify_manager_security_enabled`}}"
+      ],
       "execute_command": "{{ .Vars }} sudo -E ~/cfy/bin/python  {{ .Path }}"
     },
     {
