@@ -6,6 +6,13 @@ imports:
 
 inputs:
 
+  manager_names_and_ips:
+    type: string
+    description: >
+      Comma separated list of DNS names and IP addresses that are valid for
+      accessing the manager UI through a web browser.
+      e.g. 192.0.2.54,mycloudify.example.com,mycloudify.dev.example.com,192.0.2.100
+
   user_ssh_key:
     type: string
     default: ''
@@ -77,6 +84,7 @@ node_templates:
           executor: central_deployment_agent
           inputs:
             user_ssh_key: { get_input: user_ssh_key }
+            manager_names_and_ips: { get_input: manager_names_and_ips }
 
   vsphere_configuration:
     type: cloudify.nodes.Root
@@ -103,3 +111,5 @@ node_templates:
 outputs:
   agents_public_key:
     value: { get_attribute: [vsphere_configuration, agents_public_key] }
+  manager_public_cert:
+    value: { get_attribute: [general_configuration, manager_public_cert] }

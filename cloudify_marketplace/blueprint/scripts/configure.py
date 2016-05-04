@@ -1,5 +1,8 @@
+import re
+import socket
 import subprocess
 
+from cloudify import ctx
 from cloudify.state import ctx_parameters as inputs
 
 
@@ -34,11 +37,106 @@ def authorize_user_ssh_key(ssh_key):
         auth_handle.write('%s\n' % ssh_key)
 
 
+def build_certs(private_key_path,
+                public_key_path,
+                subjectaltnames,
+                openssl_conf_path='/etc/pki/tls/openssl.cnf'):
+    subjectaltnames = subjectaltnames.split(',')
+
+    common_name = subjectaltnames[0]
+    subjectaltnames = set(subjectaltnames)
+
+    subject_altdns = [
+        'DNS:{name}'.format(name=name)
+        for name in subjectaltnames
+    ]
+    subject_altips = []
+    for name in subjectaltnames:
+        ip_address = False
+        try:
+            socket.inet_pton(socket.AF_INET, name)
+            ip_address = True
+        except socket.error:
+            # Not IPv4
+            pass
+        try:
+            socket.inet_pton(socket.AF_INET6, name)
+            ip_address = True
+        except socket.error:
+            # Not IPv6
+            pass
+        if ip_address:
+            subject_altips.append('IP:{name}'.format(name=name))
+
+    subjectaltnames = ','.join([
+        ','.join(subject_altdns),
+        ','.join(subject_altips),
+    ])
+
+    subprocess.call([
+        'bash', '-c',
+        'openssl req -x509 -nodes -newkey rsa:2048 -keyout {private_key_path} '
+        '-out {public_key_path} -days 3650 -batch -subj "/CN={common_name}" '
+        '-reqexts SAN -extensions SAN -config <(cat {openssl_conf_path} '
+        '<(printf "[SAN]\nsubjectAltName={subjectaltnames}") )'.format(
+            private_key_path=private_key_path,
+            public_key_path=public_key_path,
+            common_name=common_name,
+            openssl_conf_path=openssl_conf_path,
+            subjectaltnames=subjectaltnames,
+        )
+    ])
+
+
+def get_host_ips():
+    # Get addresses for each interface that is active (up),
+    # and only for dynamic or permanent IPv6 addresses
+    ip_details = subprocess.check_output([
+        'ip', 'address', 'show', 'up', 'dynamic', 'permanent',
+    ])
+
+    # IP addresses are expected to be in one of these forms:
+    # inet <address>/<mask>
+    # inet6 <address>/<mask>
+    # We use a non-capturing group (?:) to ignore the inet/inet6 part
+    ip_finder = re.compile('(?:inet[6]? )([^/]+)')
+
+    return ip_finder.findall(ip_details)
+
+
+def regenerate_manager_certificates(subjectaltnames):
+    # Make sure localhost and the currently assigned IPs work
+    host_ips = ','.join(get_host_ips())
+    subjectaltnames = ','.join([
+        subjectaltnames,
+        host_ips,
+        '127.0.0.1',
+        'localhost',
+    ])
+
+    private_cert_path = '/root/cloudify/server.key'
+    public_cert_path = '/root/cloudify/server.crt'
+    build_certs(
+        private_key_path=private_cert_path,
+        public_key_path=public_cert_path,
+        subjectaltnames=subjectaltnames,
+    )
+    subprocess.call([
+        'service', 'nginx', 'reload',
+    ])
+
+    # Make sure the public cert is available for easy download from the UI
+    with open(public_cert_path) as cert_handle:
+        ctx.instance.runtime_properties['manager_public_cert'] = \
+            cert_handle.read()
+
+
 def main():
     regenerate_host_keys()
 
     authorize_user_ssh_key(inputs['user_ssh_key'])
 
+    regenerate_manager_certificates(inputs['manager_names_and_ips'])
 
 if __name__ == '__main__':
     main()

@@ -6,6 +6,13 @@ imports:
 
 inputs:
 
+  manager_names_and_ips:
+    type: string
+    description: >
+      Comma separated list of DNS names and IP addresses that are valid for
+      accessing the manager UI through a web browser.
+      e.g. 192.0.2.54,mycloudify.example.com,mycloudify.dev.example.com,192.0.2.100
+
   user_ssh_key:
     type: string
     default: ''
@@ -67,6 +74,7 @@ node_templates:
           executor: central_deployment_agent
           inputs:
             user_ssh_key: { get_input: user_ssh_key }
+            manager_names_and_ips: { get_input: manager_names_and_ips }
 
 # TODO: Split this out and composite the general config part
   openstack_configuration:
@@ -92,3 +100,7 @@ node_templates:
   # This is a workaround for cloudify not installing the required dependencies without a node that 'uses' them
   dependencies_install:
     type: cloudify.openstack_dependencies.Install
+
+outputs:
+  manager_public_cert:
+    value: { get_attribute: [general_configuration, manager_public_cert] }
