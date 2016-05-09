@@ -1,9 +1,14 @@
+import base64
 import re
 import socket
 import subprocess
 
+from cloudify_rest_client import CloudifyClient
 from cloudify import ctx
 from cloudify.state import ctx_parameters as inputs
+
+
+MANAGER_SSL_CERT_PATH = '/root/cloudify/server.crt'
 
 
 def regenerate_host_keys():
@@ -35,6 +40,18 @@ def regenerate_host_keys():
 def authorize_user_ssh_key(ssh_key):
     with open('/home/centos/.ssh/authorized_keys', 'a') as auth_handle:
         auth_handle.write('%s\n' % ssh_key)
+
+
+def get_auth_header(username, password):
+    header = None
+
+    if username and password:
+        credentials = '{0}:{1}'.format(username, password)
+        header = {
+            'Authorization':
+            'Basic' + ' ' + base64.urlsafe_b64encode(credentials)}
+
+    return header
 
 
 def build_certs(private_key_path,
@@ -104,7 +121,14 @@ def get_host_ips():
     return ip_finder.findall(ip_details)
 
 
-def regenerate_manager_certificates(subjectaltnames):
+def get_general_subjectaltnames(subjectaltnames):
+    # TODO: Name this function better
+    subjectaltnames = subjectaltnames.split(',')
+    subjectaltnames = [
+        name for name in subjectaltnames
+        if name != ''
+    ]
+    subjectaltnames = ','.join(subjectaltnames)
     # Make sure localhost and the currently assigned IPs work
     host_ips = ','.join(get_host_ips())
     subjectaltnames = ','.join([
@@ -113,22 +137,131 @@ def regenerate_manager_certificates(subjectaltnames):
         '127.0.0.1',
         'localhost',
     ])
+    return subjectaltnames
+
+
+def regenerate_manager_certificates(subjectaltnames):
+    subjectaltnames = get_general_subjectaltnames(subjectaltnames)
 
     private_cert_path = '/root/cloudify/server.key'
-    public_cert_path = '/root/cloudify/server.crt'
+    public_cert_path = MANAGER_SSL_CERT_PATH
+    tmp_private = '/tmp/manager-private'
+    tmp_public = '/tmp/manager-public'
     build_certs(
-        private_key_path=private_cert_path,
-        public_key_path=public_cert_path,
+        private_key_path=tmp_private,
+        public_key_path=tmp_public,
         subjectaltnames=subjectaltnames,
     )
-    subprocess.call([
-        'service', 'nginx', 'reload',
-    ])
+    new_certs = [
+        (tmp_private, private_cert_path),
+        (tmp_public, public_cert_path),
+    ]
 
     # Make sure the public cert is available for easy download from the UI
-    with open(public_cert_path) as cert_handle:
+    with open(tmp_public) as cert_handle:
         ctx.instance.runtime_properties['manager_public_cert'] = \
             cert_handle.read()
+
+    services_to_restart = [
+        'nginx',
+        'mgmtworker',
+    ]
+    return services_to_restart, new_certs
+
+
+def replace_certs_and_restart_services_after_workflow(services, new_certs):
+    # new_certs is expected to be a list of tuples with
+    # [(<new cert path>, <path to original cert (to replace)>), ...]
+    restart_file_path = '/tmp/cloudify_configuration_restart_services'
+    with open(restart_file_path, 'w') as restart_file_handle:
+        restart_file_handle.write('#! /usr/bin/env bash\n')
+
+        # Stop the services
+        for service in services:
+            restart_file_handle.write('service %s stop\n' % service)
+
+        # Copy certs to their destinations
+        for cert, destination in new_certs:
+            restart_file_handle.write('cp {cert} {destination}'.format(
+                cert=cert,
+                destination=destination,
+            ))
+
+        # Start the services again
+        for service in services:
+            restart_file_handle.write('service %s start\n' % service)
+
+        # Clean up
+        for cert, _ in new_certs:
+            restart_file_handle.write('rm -f {cert}'.format(
+                cert=cert,
+            ))
+        restart_file_handle.write('rm %s\n' % restart_file_path)
+    subprocess.call([
+        'sudo',
+        'at',
+        'now', '+', '1', 'minutes',
+        '-f', restart_file_path,
+    ])
+
+
+def regenerate_broker_certificates(subjectaltnames):
+    subjectaltnames = get_general_subjectaltnames(subjectaltnames)
+
+    private_cert_path = '/etc/rabbitmq/rabbit-priv.pem'
+    public_cert_path = '/etc/rabbitmq/rabbit-pub.pem'
+    tmp_private = '/tmp/broker-private'
+    tmp_public = '/tmp/broker-public'
+    build_certs(
+        private_key_path=tmp_private,
+        public_key_path=tmp_public,
+        subjectaltnames=subjectaltnames,
+    )
+
+    new_certs = [
+        (tmp_private, private_cert_path),
+        (tmp_public, public_cert_path),
+    ]
+
+    # Copy public cert to everywhere it should be
+    with open(public_cert_path) as public_cert_handle:
+        public_cert = public_cert_handle.read()
+    for cert_path in [
+        '/opt/manager/amqp_pub.pem',
+        '/opt/mgmtworker/amqp_pub.pem',
+        '/opt/amqpinflux/amqp_pub.pem',
+    ]:
+        new_certs.append((tmp_public, cert_path))
+    # ...including in the cloudify_agent context
+    # TODO: Get creds from ctx
+    auth_header = get_auth_header(
+        username='cloudify',
+        password='cloudify',
+    )
+    c = CloudifyClient(
+        headers=auth_header,
+        cert=MANAGER_SSL_CERT_PATH,
+        trust_all=False,
+        port=443,
+        protocol='https',
+    )
+    name = c.manager.get_context()['name']
+    context = c.manager.get_context()['context']
+    context['cloudify']['cloudify_agent']['broker_ssl_cert'] = public_cert
+    ctx.logger.info('Updating context with new broker cert')
+    c.manager.update_context(name, context)
+
+    services_to_restart = [
+        # Rabbit
+        'rabbitmq',
+        # amqpinflux
+        'cloudify-amqpinflux',
+        # mgmtworker
+        'cloudify-mgmtworker',
+        # manager
+        'cloudify-restservice',
+    ]
+    return services_to_restart, new_certs
 
 
 def main():
@@ -136,7 +269,26 @@ def main():
 
     authorize_user_ssh_key(inputs['user_ssh_key'])
 
-    regenerate_manager_certificates(inputs['manager_names_and_ips'])
+    services_to_restart = []
+    new_certs = []
+
+    # TODO: This should only happen with security enabled...
+    # ...and these should only be inputs in that case as well
+    services, certs = regenerate_broker_certificates(
+        inputs['broker_names_and_ips']
+    )
+    services_to_restart.extend(services)
+    new_certs.extend(new_certs)
+    services, certs = regenerate_manager_certificates(
+        inputs['manager_names_and_ips']
+    )
+    services_to_restart.extend(services)
+    new_certs.extend(new_certs)
+
+    replace_certs_and_restart_services_after_workflow(
+        services_to_restart,
+        new_certs,
+    )
 
 if __name__ == '__main__':
     main()

@@ -13,6 +13,14 @@ inputs:
       accessing the manager UI through a web browser.
       e.g. 192.0.2.54,mycloudify.example.com,mycloudify.dev.example.com,192.0.2.100
 
+  broker_names_and_ips:
+    type: string
+    default: ''
+    description: >
+      Comma separated list of DNS names and IP addresses that are valid for
+      accessing the broker through an AMQP client.
+      e.g. 192.0.2.54,mybroker.example.com,mybroker.dev.example.com,192.0.2.100
+
   user_ssh_key:
     type: string
     default: ''
@@ -85,6 +93,7 @@ node_templates:
           inputs:
             user_ssh_key: { get_input: user_ssh_key }
             manager_names_and_ips: { get_input: manager_names_and_ips }
+            broker_names_and_ips: { get_input: broker_names_and_ips }
 
   vsphere_configuration:
     type: cloudify.nodes.Root
