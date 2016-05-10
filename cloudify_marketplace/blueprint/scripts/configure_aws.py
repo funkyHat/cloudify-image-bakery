@@ -69,7 +69,7 @@ def configure_manager_security_group(manager_security_group,
                                      agents_security_group):
     # authorize from agent to manager
     add_tcp_allows_to_security_group(
-        port_list=[5672, 8101, 53229],
+        port_list=[5671, 5672, 8101, 53229],
         security_group=manager_security_group,
         from_group=agents_security_group,
     )

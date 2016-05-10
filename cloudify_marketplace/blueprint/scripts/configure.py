@@ -2,6 +2,7 @@ import base64
 import re
 import socket
 import subprocess
+import time
 
 from cloudify_rest_client import CloudifyClient
 from cloudify import ctx
@@ -170,6 +171,13 @@ def regenerate_manager_certificates(subjectaltnames):
 
 
 def replace_certs_and_restart_services_after_workflow(services, new_certs):
+
+    # TODO: Make this a script that runs every minute called by manager:
+    # If <file> exists, json.load file
+    # while <file>.execution_id != execution finished:
+    #   sleep(0.5)
+    # <apply changes>
+
     # new_certs is expected to be a list of tuples with
     # [(<new cert path>, <path to original cert (to replace)>), ...]
     restart_file_path = '/tmp/cloudify_configuration_restart_services'
@@ -196,7 +204,7 @@ def replace_certs_and_restart_services_after_workflow(services, new_certs):
             restart_file_handle.write('rm -f {cert}'.format(
                 cert=cert,
             ))
-        restart_file_handle.write('rm %s\n' % restart_file_path)
+        #restart_file_handle.write('rm %s\n' % restart_file_path)
     subprocess.call([
         'sudo',
         'at',
@@ -232,24 +240,6 @@ def regenerate_broker_certificates(subjectaltnames):
         '/opt/amqpinflux/amqp_pub.pem',
     ]:
         new_certs.append((tmp_public, cert_path))
-    # ...including in the cloudify_agent context
-    # TODO: Get creds from ctx
-    auth_header = get_auth_header(
-        username='cloudify',
-        password='cloudify',
-    )
-    c = CloudifyClient(
-        headers=auth_header,
-        cert=MANAGER_SSL_CERT_PATH,
-        trust_all=False,
-        port=443,
-        protocol='https',
-    )
-    name = c.manager.get_context()['name']
-    context = c.manager.get_context()['context']
-    context['cloudify']['cloudify_agent']['broker_ssl_cert'] = public_cert
-    ctx.logger.info('Updating context with new broker cert')
-    c.manager.update_context(name, context)
 
     services_to_restart = [
         # Rabbit
@@ -285,10 +275,19 @@ def main():
     services_to_restart.extend(services)
     new_certs.extend(new_certs)
 
-    replace_certs_and_restart_services_after_workflow(
-        services_to_restart,
-        new_certs,
-    )
+    with open('/tmp/cloudify_ssl_certificate_replacement.json') as fh:
+        fh.write(json.dumps(
+            'execution_id': ctx.execution_id,
+            # Get these from somewhere, somehow...
+            'cloudify_username': 'cloudify',
+            'cloudify_password': 'cloudify',
+            'new_certs': new_certs,
+            'restart_services': services_to_restart,
+        ))
+    # Allow some time in case this is the last part of the workflow so that
+    # the background cron job picks up and completes this at about the same
+    # time that the workflow appears to finish for the user (hopefully)
+    time.sleep(60)
 
 if __name__ == '__main__':
     main()

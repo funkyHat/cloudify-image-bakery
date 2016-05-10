@@ -11,6 +11,9 @@ function install_prereqs
 
 function create_virtualenv
 {
+  # TODO: Move venv creation to its own script
+  # TODO: Add group for allowing access to venv
+  # TODO: Find way to get venv cfy in path for group (/usr/local/bin?)
   echo creating cloudify virtualenv
   virtualenv $CFY_VENV
 }
@@ -62,10 +65,10 @@ admin_username: ${CLOUDIFY_MANAGER_USERNAME}
 admin_password: ${CLOUDIFY_MANAGER_PASSWORD}
 
 # Temporary section while manager resources are fixed
-webui_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-ui-3.4.0-m4-b393.tgz
-amqpinflux_rpm_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-amqp-influx-3.4.0-m4_b393.x86_64.rpm
-management_worker_rpm_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-management-worker-3.4.0-m4_b393.x86_64.rpm
-rest_service_rpm_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-rest-service-3.4.0-m4_b393.x86_64.rpm
+#webui_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-ui-3.4.0-m4-b393.tgz
+#amqpinflux_rpm_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-amqp-influx-3.4.0-m4_b393.x86_64.rpm
+#management_worker_rpm_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-management-worker-3.4.0-m4_b393.x86_64.rpm
+#rest_service_rpm_source_url: http://repository.cloudifysource.org/org/cloudify3/3.4.0/m4-RELEASE/cloudify-rest-service-3.4.0-m4_b393.x86_64.rpm
 
 
 rabbitmq_ssl_enabled: ${CLOUDIFY_MANAGER_SECURITY_ENABLED}
@@ -105,6 +108,16 @@ function create_broker_certs
 {
   # The certs don't necessarily need to go where they're put here, but it does keep them nicely organised
   generate_certs broker cloudify-manager-blueprints/resources/ssl/broker.key cloudify-manager-blueprints/resources/ssl/broker.crt 127.0.0.1 IP:127.0.0.1,DNS:localhost
+}
+
+function give_system_wide_cli_access
+{
+  cd ${CFY_VENV}
+  virtualenv --relocatable .
+  cd -
+  sudo cp -r ${CFY_VENV} /opt/cfy_cli
+  sudo chown -R root. /opt/cfy_cli
+  # TODO: Fix perms
 }
 
 function bootstrap

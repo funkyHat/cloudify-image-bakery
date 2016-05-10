@@ -296,7 +296,7 @@ def configure_manager_security_group(nova_client,
                                      management_security_group_id):
     add_tcp_allows_to_security_group(
         nova_client=nova_client,
-        port_list=[5672, 8101, 53229],
+        port_list=[5671, 5672, 8101, 53229],
         cidr=management_subnet_cidr,
         security_group_id=management_security_group_id,
     )

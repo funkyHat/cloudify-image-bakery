@@ -123,6 +123,32 @@
       ]
     },
     {
+      "type": "file",
+      "source": "resources/replace_ssl_certificates",
+      "destination": "/tmp/replace_ssl_certificates"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo mv /tmp/replace_ssl_certificates /opt/cloudify_security_configuration",
+        "sudo chown root. /opt/cloudify_security_configuration",
+        "sudo chmod 500 /opt/cloudify_security_configuration"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "resources/replace_ssl_certificates.cron",
+      "destination": "/tmp/replace_ssl_certificates.cron"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo mv /tmp/replace_ssl_certificates.cron /etc/cron.d/cloudify_security_configuration",
+        "sudo chown root. /etc/cron.d/cloudify_security_configuration",
+        "sudo chmod 440 /opt/cloudify_security_configuration"
+      ]
+    },
+    {
       "type": "shell",
       "environment_vars": [
         "CORE_TAG_NAME={{user `cloudify_version`}}",

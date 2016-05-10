@@ -1,5 +1,5 @@
 #! /usr/bin/env bash
-CFY_BIN=~/cfy/bin/cfy
+CFY_BIN=/opt/cfy_cli/bin/cfy
 cd ${BLUEPRINT_PATH}
 
 export CLOUDIFY_USERNAME=${CLOUDIFY_MANAGER_USERNAME}
