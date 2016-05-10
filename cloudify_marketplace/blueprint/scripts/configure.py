@@ -1,4 +1,5 @@
 import base64
+import os
 import re
 import socket
 import subprocess
@@ -10,6 +11,7 @@ from cloudify.state import ctx_parameters as inputs
 
 
 MANAGER_SSL_CERT_PATH = '/root/cloudify/server.crt'
+MANAGER_TMP_PATH = os.path.join(os.path.expanduser('~'), 'cfy-tmp')
 
 
 def regenerate_host_keys():
@@ -146,8 +148,8 @@ def regenerate_manager_certificates(subjectaltnames):
 
     private_cert_path = '/root/cloudify/server.key'
     public_cert_path = MANAGER_SSL_CERT_PATH
-    tmp_private = '/tmp/manager-private'
-    tmp_public = '/tmp/manager-public'
+    tmp_private = os.path.join(MANAGER_TMP_PATH, '/manager-private')
+    tmp_public = os.path.join(MANAGER_TMP_PATH, '/manager-public')
     build_certs(
         private_key_path=tmp_private,
         public_key_path=tmp_public,
@@ -180,7 +182,9 @@ def replace_certs_and_restart_services_after_workflow(services, new_certs):
 
     # new_certs is expected to be a list of tuples with
     # [(<new cert path>, <path to original cert (to replace)>), ...]
-    restart_file_path = '/tmp/cloudify_configuration_restart_services'
+    restart_file_path = os.path.join(
+        MANAGER_TMP_PATH, '/cloudify_configuration_restart_services')
+
     with open(restart_file_path, 'w') as restart_file_handle:
         restart_file_handle.write('#! /usr/bin/env bash\n')
 
@@ -218,8 +222,8 @@ def regenerate_broker_certificates(subjectaltnames):
 
     private_cert_path = '/etc/rabbitmq/rabbit-priv.pem'
     public_cert_path = '/etc/rabbitmq/rabbit-pub.pem'
-    tmp_private = '/tmp/broker-private'
-    tmp_public = '/tmp/broker-public'
+    tmp_private = os.path.join(MANAGER_TMP_PATH, '/broker-private')
+    tmp_public = os.path.join(MANAGER_TMP_PATH, '/broker-public')
     build_certs(
         private_key_path=tmp_private,
         public_key_path=tmp_public,
@@ -255,6 +259,9 @@ def regenerate_broker_certificates(subjectaltnames):
 
 
 def main():
+    os.mkdir(MANAGER_TMP_PATH, 0o700)
+    # 0o is 2/3 compatible octal literal prefix
+
     regenerate_host_keys()
 
     authorize_user_ssh_key(inputs['user_ssh_key'])
