@@ -159,4 +159,5 @@ install_cli
 init_cfy_workdir
 get_manager_blueprints
 generate_keys
+give_system_wide_cli_access
 bootstrap
