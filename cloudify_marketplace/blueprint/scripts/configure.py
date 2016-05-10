@@ -275,7 +275,7 @@ def main():
     services_to_restart.extend(services)
     new_certs.extend(new_certs)
 
-    with open('/tmp/cloudify_ssl_certificate_replacement.json') as fh:
+    with open('/tmp/cloudify_ssl_certificate_replacement.json', 'w') as fh:
         fh.write(json.dumps(
             'execution_id': ctx.execution_id,
             # Get these from somewhere, somehow...
