@@ -167,7 +167,7 @@ def regenerate_manager_certificates(subjectaltnames):
 
     services_to_restart = [
         'nginx',
-        'mgmtworker',
+        'cloudify-mgmtworker',
     ]
     return services_to_restart, new_certs
 

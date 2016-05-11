@@ -132,6 +132,9 @@ function bootstrap
   export CLOUDIFY_USERNAME=${CLOUDIFY_MANAGER_USERNAME}
   export CLOUDIFY_PASSWORD=${CLOUDIFY_MANAGER_PASSWORD}
 
+  # TODO: REMOVE THIS TEMPORARY HACK
+  sed -i 's/cloudify_dsl_1_3/cloudify_dsl_1_2/' cloudify-manager-blueprints/simple-manager-blueprint.yaml
+
   echo "bootstrapping..."
   # bootstrap the manager locally
   PATH=$CFY_VENV/bin:PATH $CFY_VENV/bin/cfy bootstrap -v --install-plugins \
