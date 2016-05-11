@@ -1,10 +1,10 @@
 import base64
+import json
 import re
 import socket
 import subprocess
 import time
 
-from cloudify_rest_client import CloudifyClient
 from cloudify import ctx
 from cloudify.state import ctx_parameters as inputs
 
@@ -231,9 +231,6 @@ def regenerate_broker_certificates(subjectaltnames):
         (tmp_public, public_cert_path),
     ]
 
-    # Copy public cert to everywhere it should be
-    with open(public_cert_path) as public_cert_handle:
-        public_cert = public_cert_handle.read()
     for cert_path in [
         '/opt/manager/amqp_pub.pem',
         '/opt/mgmtworker/amqp_pub.pem',
@@ -276,14 +273,14 @@ def main():
     new_certs.extend(new_certs)
 
     with open('/tmp/cloudify_ssl_certificate_replacement.json', 'w') as fh:
-        fh.write(json.dumps(
+        fh.write(json.dumps({
             'execution_id': ctx.execution_id,
             # Get these from somewhere, somehow...
             'cloudify_username': 'cloudify',
             'cloudify_password': 'cloudify',
             'new_certs': new_certs,
             'restart_services': services_to_restart,
-        ))
+        }))
     # Allow some time in case this is the last part of the workflow so that
     # the background cron job picks up and completes this at about the same
     # time that the workflow appears to finish for the user (hopefully)
