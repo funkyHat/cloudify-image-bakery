@@ -41,11 +41,15 @@ if __name__ == '__main__':
 
         # Stop services
         for service in details['restart_services']:
-            subprocess.call(['service', service, 'stop'])
+            subprocess.call(['/sbin/service', service, 'stop'])
 
         # Replace certs
         for temp_cert, destination in details['new_certs']:
             shutil.copyfile(temp_cert, destination)
+
+        # Start services
+        for service in details['restart_services']:
+            subprocess.call(['/sbin/service', service, 'start'])
 
         # Also update the cert in the provider context
         with open(cert_path) as cert_handle:
@@ -54,10 +58,6 @@ if __name__ == '__main__':
         context = c.manager.get_context()['context']
         context['cloudify']['cloudify_agent']['broker_ssl_cert'] = public_cert
         c.manager.update_context(name, context)
-
-        # Start services
-        for service in details['restart_services']:
-            subprocess.call(['service', service, 'start'])
 
         # Clean up temporary certificates
         for temp_cert, _ in details['new_certs']:
