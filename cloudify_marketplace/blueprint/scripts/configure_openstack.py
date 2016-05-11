@@ -221,7 +221,17 @@ def add_tcp_allows_to_security_group(nova_client,
 def update_context(server,
                    resources_context,
                    agents_user):
-    c = CloudifyClient()
+    auth_header = {'Authorization': 'Basic Y2xvdWRpZnk6Y2xvdWRpZnk'}
+    cert_path = '/root/cloudify/server.crt'
+    print('Cert path: %s' % cert_path)
+    c = CloudifyClient(
+        headers=auth_header,
+        cert=cert_path,
+        trust_all=False,
+        port=443,
+        protocol='https',
+    )
+
     name = c.manager.get_context()['name']
     context = c.manager.get_context()['context']
     context['cloudify']['cloudify_agent']['agent_key_path'] = AGENTS_KEY_PATH
