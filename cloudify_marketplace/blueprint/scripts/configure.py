@@ -148,8 +148,8 @@ def regenerate_manager_certificates(subjectaltnames):
 
     private_cert_path = '/root/cloudify/server.key'
     public_cert_path = MANAGER_SSL_CERT_PATH
-    tmp_private = os.path.join(MANAGER_TMP_PATH, '/manager-private')
-    tmp_public = os.path.join(MANAGER_TMP_PATH, '/manager-public')
+    tmp_private = os.path.join(MANAGER_TMP_PATH, 'manager-private')
+    tmp_public = os.path.join(MANAGER_TMP_PATH, 'manager-public')
     build_certs(
         private_key_path=tmp_private,
         public_key_path=tmp_public,
@@ -183,7 +183,7 @@ def replace_certs_and_restart_services_after_workflow(services, new_certs):
     # new_certs is expected to be a list of tuples with
     # [(<new cert path>, <path to original cert (to replace)>), ...]
     restart_file_path = os.path.join(
-        MANAGER_TMP_PATH, '/cloudify_configuration_restart_services')
+        MANAGER_TMP_PATH, 'cloudify_configuration_restart_services')
 
     with open(restart_file_path, 'w') as restart_file_handle:
         restart_file_handle.write('#! /usr/bin/env bash\n')
@@ -222,8 +222,8 @@ def regenerate_broker_certificates(subjectaltnames):
 
     private_cert_path = '/etc/rabbitmq/rabbit-priv.pem'
     public_cert_path = '/etc/rabbitmq/rabbit-pub.pem'
-    tmp_private = os.path.join(MANAGER_TMP_PATH, '/broker-private')
-    tmp_public = os.path.join(MANAGER_TMP_PATH, '/broker-public')
+    tmp_private = os.path.join(MANAGER_TMP_PATH, 'broker-private')
+    tmp_public = os.path.join(MANAGER_TMP_PATH, 'broker-public')
     build_certs(
         private_key_path=tmp_private,
         public_key_path=tmp_public,
