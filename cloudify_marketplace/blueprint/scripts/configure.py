@@ -6,7 +6,6 @@ import socket
 import subprocess
 import time
 
-from cloudify_rest_client import CloudifyClient
 from cloudify import ctx
 from cloudify.state import ctx_parameters as inputs
 
@@ -236,9 +235,6 @@ def regenerate_broker_certificates(subjectaltnames):
         (tmp_public, public_cert_path),
     ]
 
-    # Copy public cert to everywhere it should be
-    with open(public_cert_path) as public_cert_handle:
-        public_cert = public_cert_handle.read()
     for cert_path in [
         '/opt/manager/amqp_pub.pem',
         '/opt/mgmtworker/amqp_pub.pem',

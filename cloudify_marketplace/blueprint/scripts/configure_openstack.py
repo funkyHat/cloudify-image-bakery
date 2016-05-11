@@ -1,3 +1,4 @@
+import base64
 from copy import copy
 import json
 import os
@@ -31,6 +32,18 @@ def create_openstack_config(username,
         os.makedirs(conf_dir)
     with open(OPENSTACK_PLUGIN_CONF, 'w') as conf_handle:
         json.dump(config, conf_handle)
+
+
+def get_auth_header(username, password):
+    header = None
+
+    if username and password:
+        credentials = '{0}:{1}'.format(username, password)
+        header = {
+            'Authorization':
+            'Basic' + ' ' + base64.urlsafe_b64encode(credentials)}
+
+    return header
 
 
 def build_resources_context(server,
@@ -221,9 +234,8 @@ def add_tcp_allows_to_security_group(nova_client,
 def update_context(server,
                    resources_context,
                    agents_user):
-    auth_header = {'Authorization': 'Basic Y2xvdWRpZnk6Y2xvdWRpZnk'}
+    auth_header = get_auth_header('cloudify', 'cloudify')
     cert_path = '/root/cloudify/server.crt'
-    print('Cert path: %s' % cert_path)
     c = CloudifyClient(
         headers=auth_header,
         cert=cert_path,

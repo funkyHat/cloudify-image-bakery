@@ -5,7 +5,7 @@
     "aws_secret_key": "AWS SECRET KEY NOT PROVIDED",
     "aws_source_ami": "AWS SOURCE AMI NOT PROVIDED",
     "aws_region": "us-east-1",
-    "aws_instance_type": "m3.medium",
+    "aws_instance_type": "t2.medium",
     "openstack_ssh_keypair_name": "SSH KEYPAIR NOT SET",
     "openstack_availability_zone": "AVAILABILITY ZONE NOT SET",
     "openstack_image_flavor": "IMAGE FLAVOR NOT SET",
