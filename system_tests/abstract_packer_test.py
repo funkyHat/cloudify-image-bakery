@@ -19,17 +19,16 @@ import shutil
 import subprocess
 import tempfile
 import time
+from abc import ABCMeta, abstractmethod
 
 from cosmo_tester.framework import git_helper as git
 
+from retrying import retry
 from requests import ConnectionError
 from cloudify_cli import constants
 from cloudify_rest_client.exceptions import CloudifyClientError
 from cosmo_tester.framework.util import create_rest_client
-from cloudify.workflows import local
-from cloudify_cli import constants as cli_constants
-import boto.ec2
-from novaclient.v2 import client as novaclient
+from cosmo_tester.framework.cfy_helper import CfyHelper
 
 DEFAULT_IMAGE_BAKERY_REPO_URL = 'https://github.com/' \
                                 'cloudify-cosmo/cloudify-image-bakery.git'
@@ -47,211 +46,35 @@ SUPPORTED_ENVS = [
 
 
 class AbstractPackerTest(object):
-    def setUp(self):
-        self.conf = self.env.cloudify_config
+    __metaclass__ = ABCMeta
 
-        self.aws_hello_world_test_config_inputs = {
-            'user_ssh_key': self.conf['aws_ssh_keypair_name'],
-            'agents_user': self.conf.get('aws_agents_user', 'ubuntu'),
-            'aws_access_key': self.conf['aws_access_key'],
-            'aws_secret_key': self.conf['aws_secret_key'],
-        }
+    secure = False
+
+    @abstractmethod
+    def _delete_image(self): pass
+
+    @abstractmethod
+    def _find_image(self): pass
+
+    @abstractmethod
+    def deploy_image(self): pass
+
+    @abstractmethod
+    def _undeploy_image(self): pass
+
+    def setUp(self):
+        super(AbstractPackerTest, self).setUp()
+
+        self.conf = self.env.cloudify_config
+        self.config_inputs = {}
 
     def _find_images(self):
-        finders = {
-            'aws': self._find_image_aws,
-            'openstack': self._find_image_openstack,
-        }
         for environment in self.images.keys():
-            self.images[environment] = finders[environment]()
+            self.images[environment] = self._find_image()
 
     def delete_images(self):
-        deleters = {
-            'aws': self._delete_image_aws,
-            'openstack': self._delete_image_openstack,
-        }
-
         for environment in self.images.keys():
-            deleters[environment](self.images[environment])
-
-    def _get_conn_aws(self):
-        return boto.ec2.EC2Connection(
-            aws_access_key_id=self.env.cloudify_config[
-                'aws_access_key'],
-            aws_secret_access_key=self.env.cloudify_config[
-                'aws_secret_key'],
-        )
-
-    def _find_image_aws(self):
-        conn = self._get_conn_aws()
-
-        image_id = None
-
-        images = conn.get_all_images(owners='self')
-
-        for image in images:
-            if image.name.startswith(self.name_prefix):
-                image_id = image.id
-                break
-
-        return image_id
-
-    def deploy_image_aws(self):
-        blueprint_path = self.copy_blueprint('aws-vpc-start-vm')
-        self.aws_blueprint_yaml = os.path.join(
-            blueprint_path,
-            'blueprint.yaml'
-        )
-
-        self.aws_inputs = {
-            'image_id': self.images['aws'],
-            'instance_type': self.build_inputs['aws_instance_type'],
-            'vpc_id': self.env.cloudify_config['aws_vpc_id'],
-            'vpc_subnet_id': self.env.cloudify_config['aws_subnet_id'],
-            'server_name': 'marketplace-system-test-manager',
-            'aws_access_key_id': self.build_inputs['aws_access_key'],
-            'aws_secret_access_key': self.build_inputs['aws_secret_key'],
-            'ec2_region_name': self.build_inputs['aws_region'],
-        }
-
-        self.logger.info('initialize local env for running the '
-                         'blueprint that starts a vm')
-        self.aws_manager_env = local.init_env(
-            self.aws_blueprint_yaml,
-            inputs=self.aws_inputs,
-            name=self._testMethodName,
-            ignored_modules=cli_constants.IGNORED_LOCAL_WORKFLOW_MODULES
-        )
-
-        self.logger.info('starting vm to serve as the management vm')
-        self.aws_manager_env.execute('install',
-                                     task_retries=10,
-                                     task_retry_interval=30)
-
-        outputs = self.aws_manager_env.outputs()
-        self.aws_manager_public_ip = outputs[
-            'simple_vm_public_ip_address'
-        ]
-
-        self.addCleanup(self._undeploy_image_aws)
-
-    def _undeploy_image_aws(self):
-        # Private method as it is used for cleanup
-        self.aws_manager_env.execute('uninstall',
-                                     task_retries=40,
-                                     task_retry_interval=30)
-
-    def _delete_image_aws(self, image_id):
-        conn = self._get_conn_aws()
-        image = conn.get_all_images(image_ids=[image_id])[0]
-        image.deregister()
-
-    def _get_conn_openstack(self):
-        return novaclient.Client(
-            username=self.env.cloudify_config['keystone_username'],
-            api_key=self.env.cloudify_config['keystone_password'],
-            auth_url=self.env.cloudify_config['keystone_url'],
-            project_id=self.env.cloudify_config['keystone_tenant_name'],
-            region=self.env.cloudify_config['region'],
-        )
-
-    def _find_image_openstack(self):
-        conn = self._get_conn_openstack()
-
-        image_id = None
-
-        # Tenant ID does not appear to be populated until another action has
-        # been taken, so we will make a call to cause it to be populated.
-        # We use floating IPs as this shouldn't be a huge amount of data.
-        # We could try making a call that will return nothing, but those may
-        # raise exceptions so we will trust that list should not do so.
-        conn.floating_ips.list()
-        my_tenant_id = conn.client.tenant_id
-
-        images = conn.images.list()
-        self.logger.info('Images from platform: %s' % images)
-        images = [image.to_dict() for image in images]
-        self.logger.info('Tenant ID: %s' % my_tenant_id)
-        for image in images:
-            self.logger.info(image['metadata'])
-        # Get just the images belonging to this tenant
-        images = [
-            image for image in images
-            if 'owner_id' in image['metadata'].keys() and
-            # 'and' on previous line due to PEP8
-            image['metadata']['owner_id'] == my_tenant_id
-        ]
-        self.logger.info('All images: %s' % images)
-        self.logger.info('Searching by prefix: %s' % self.name_prefix)
-        # Filter for the prefix
-        for image in images:
-            self.logger.info('Checking %s...' % image['name'])
-            if image['name'].startswith(self.name_prefix):
-                self.logger.info('Correct image, with ID: %s' % image['id'])
-                image_id = image['id']
-                break
-
-        return image_id
-
-    def deploy_image_openstack(self):
-        blueprint_path = self.copy_blueprint('openstack-start-vm')
-        self.openstack_blueprint_yaml = os.path.join(
-            blueprint_path,
-            'blueprint.yaml'
-        )
-        self.prefix = 'packer-system-test-{0}'.format(self.test_id)
-
-        self.openstack_inputs = {
-            'prefix': self.prefix,
-            'external_network': self.env.cloudify_config[
-                'openstack_external_network_name'],
-            'os_username': self.env.cloudify_config['keystone_username'],
-            'os_password': self.env.cloudify_config['keystone_password'],
-            'os_tenant_name': self.env.cloudify_config[
-                'keystone_tenant_name'],
-            'os_region': self.env.cloudify_config['region'],
-            'os_auth_url': self.env.cloudify_config['keystone_url'],
-            'image_id': self.images['openstack'],
-            'flavor': self.env.cloudify_config[
-                'openstack_marketplace_flavor'],
-            'key_pair_path': '{0}/{1}-keypair.pem'.format(self.workdir,
-                                                          self.prefix)
-        }
-
-        self.logger.info('initialize local env for running the '
-                         'blueprint that starts a vm')
-        self.openstack_manager_env = local.init_env(
-            self.openstack_blueprint_yaml,
-            inputs=self.openstack_inputs,
-            name=self._testMethodName,
-            ignored_modules=cli_constants.IGNORED_LOCAL_WORKFLOW_MODULES
-        )
-
-        self.logger.info('starting vm to serve as the management vm')
-        self.openstack_manager_env.execute('install',
-                                           task_retries=10,
-                                           task_retry_interval=30)
-
-        outputs = self.openstack_manager_env.outputs()
-        self.openstack_manager_public_ip = outputs[
-            'simple_vm_public_ip_address'
-        ]
-        self.openstack_manager_private_ip = outputs[
-            'simple_vm_private_ip_address'
-        ]
-
-        self.addCleanup(self._undeploy_image_openstack)
-
-    def _undeploy_image_openstack(self):
-        # Private method as it is used for cleanup
-        self.openstack_manager_env.execute('uninstall',
-                                           task_retries=40,
-                                           task_retry_interval=30)
-
-    def _delete_image_openstack(self, image_id):
-        conn = self._get_conn_openstack()
-        image = conn.images.find(id=image_id)
-        image.delete()
+            self._delete_image(self.images[environment])
 
     def _get_packer(self, destination):
         packer_url = self.env.cloudify_config.get(
@@ -303,7 +126,7 @@ class AbstractPackerTest(object):
         )
         return repo_path
 
-    def _build_inputs(self, destination_path, name_prefix, secure=True):
+    def _build_inputs(self, destination_path, name_prefix):
         openstack_url = self.env.cloudify_config.get('keystone_url')
         if openstack_url is not None:
             # TODO: Do a join on this if the URL doesn't have 2.0 already
@@ -380,7 +203,7 @@ class AbstractPackerTest(object):
                 'OPENSTACK SECURITY GROUP NOT SET'
             ),
             "cloudify_manager_security_enabled":
-                'true' if str(secure) else 'false',
+                'true' if self.secure else 'false',
         }
         inputs = json.dumps(self.build_inputs)
         with open(destination_path, 'w') as inputs_handle:
@@ -389,7 +212,7 @@ class AbstractPackerTest(object):
     def build_with_packer(self,
                           name_prefix='marketplace-system-tests',
                           only=None,
-                          secure=True):
+                          ):
         self.name_prefix = name_prefix
         if only is None:
             self.images = {environment: None for environment in SUPPORTED_ENVS}
@@ -414,7 +237,6 @@ class AbstractPackerTest(object):
                 inputs_file_name
             ),
             name_prefix=name_prefix,
-            secure=secure,
         )
 
         # Build the packer command
@@ -462,51 +284,8 @@ class AbstractPackerTest(object):
     def clean_temp_dir(self):
         shutil.rmtree(self.base_temp_dir)
 
-    def _delete_agents_keypair(self):
-        conn = self._get_conn_aws()
-        conn.delete_key_pair(key_name=self.aws_agents_keypair)
-
-    def _delete_agents_secgroup(self):
-        conn = self._get_conn_aws()
-        sgs = conn.get_all_security_groups()
-        candidate_sgs = [
-            sg for sg in sgs
-            if sg.name == self.aws_agents_secgroup and
-            # 'and' is on previous line due to PEP8
-            sg.vpc_id == self.env.cloudify_config['aws_vpc_id']
-        ]
-        if len(candidate_sgs) != 1:
-            raise RuntimeError('Could not clean up agents security group')
-        else:
-            sg_id = candidate_sgs[0].id
-            for sg in sgs:
-                for rule in sg.rules:
-                    groups = [grant.group_id for grant in rule.grants]
-                    if sg_id in groups:
-                        self._delete_sg_rule_reference(
-                            security_group=sg,
-                            proto=rule.ip_protocol,
-                            from_port=rule.from_port,
-                            to_port=rule.to_port,
-                            source_sg=candidate_sgs[0],
-                        )
-            candidate_sgs[0].delete()
-
-    def _delete_sg_rule_reference(self,
-                                  security_group,
-                                  from_port,
-                                  to_port,
-                                  source_sg,
-                                  proto='tcp'):
-        security_group.revoke(
-            ip_protocol=proto,
-            from_port=from_port,
-            to_port=to_port,
-            src_group=source_sg,
-        )
-
     def get_public_ip(self, nodes_state):
-        return self.aws_manager_public_ip
+        return self.manager_public_ip
 
     @property
     def expected_nodes_count(self):
@@ -524,17 +303,17 @@ class AbstractPackerTest(object):
     def entrypoint_property_name(self):
         return 'ip'
 
-    def _deploy_manager(self, secure=False, trust_all=False):
-        self.build_with_packer(only='aws', secure=secure)
-        self.deploy_image_aws()
+    def _deploy_manager(self):
+        self.build_with_packer(only=self.packer_build_only)
+        self.deploy_image()
 
         os.environ[constants.CLOUDIFY_USERNAME_ENV] = 'cloudify'
         os.environ[constants.CLOUDIFY_PASSWORD_ENV] = 'cloudify'
 
         self.client = create_rest_client(
-            self.aws_manager_public_ip,
-            secure=secure,
-            trust_all=trust_all,
+            self.manager_public_ip,
+            secure=self.secure,
+            trust_all=self.secure,
         )
 
         response = {'status': None}
@@ -555,21 +334,21 @@ class AbstractPackerTest(object):
                 # Timeout
                 pass
 
-        self.aws_agents_secgroup = self.conf.get(
+        self.agents_secgroup = self.conf.get(
             'system-tests-security-group-name',
             'marketplace-system-tests-security-group')
-        self.aws_agents_keypair = self.conf.get(
+        self.agents_keypair = self.conf.get(
             'system-tests-keypair-name',
             'marketplace-system-tests-keypair')
 
-        self.aws_hello_world_test_config_inputs.update({
-            'agents_security_group_name': self.aws_agents_secgroup,
-            'agents_keypair_name': self.aws_agents_keypair,
+        self.config_inputs.update({
+            'agents_security_group_name': self.agents_secgroup,
+            'agents_keypair_name': self.agents_keypair,
             })
-        if secure:
+        if self.secure:
             # Need to add the external IP address to the generated cert
-            self.aws_hello_world_test_config_inputs.update({
-                'manager_names_and_ips': self.aws_manager_public_ip,
+            self.config_inputs.update({
+                'manager_names_and_ips': self.manager_public_ip,
                 })
 
         # Arbitrary sleep to wait for manager to actually finish starting as
@@ -594,7 +373,7 @@ class AbstractPackerTest(object):
                 self.client.deployments.create(
                     blueprint_id='CloudifySettings',
                     deployment_id='config',
-                    inputs=self.aws_hello_world_test_config_inputs,
+                    inputs=self.config_inputs,
                 )
                 self.addCleanup(self._delete_agents_secgroup)
                 self.addCleanup(self._delete_agents_keypair)
@@ -629,3 +408,85 @@ class AbstractPackerTest(object):
                     self.logger.warn(
                         'Saw error {}. Retrying.'.format(str(err))
                     )
+
+    @retry(stop_max_delay=180000, wait_exponential_multiplier=1000)
+    def cfy_connect(self, *args, **kwargs):
+        self.logger.debug('Attempting to set up CfyHelper: {} {}'.format(
+            args, kwargs))
+        return CfyHelper(*args, **kwargs)
+
+    def test_hello_world(self):
+        self._deploy_manager()
+
+        self.cfy = self.cfy_connect(management_ip=self.manager_public_ip)
+
+        # once we've managed to connect again using `cfy use` we need to update
+        # the rest client too:
+        self.client = create_rest_client(self.manager_public_ip)
+
+        time.sleep(120)
+
+        self._run(
+            blueprint_file='ec2-vpc-blueprint.yaml',
+            inputs={
+                'agent_user': 'ubuntu',
+                'image_id': self.conf['aws_trusty_image_id'],
+                'vpc_id': self.conf['aws_vpc_id'],
+                'vpc_subnet_id': self.conf['aws_subnet_id'],
+            },
+            influx_host_ip=self.manager_public_ip,
+        )
+
+
+class AbstractSecureTest(AbstractPackerTest):
+    secure = True
+
+    def setUp(self, *args, **kwargs):
+        super(AbstractSecureTest, self).setUp(*args, **kwargs)
+
+        self.config_inputs.update({
+            'new_manager_username': self.conf.get('new_manager_username',
+                                                  'new'),
+            'new_manager_password': self.conf.get('new_manager_password',
+                                                  'new'),
+            'new_broker_username': self.conf.get('new_broker_username', 'new'),
+            'new_broker_password': self.conf.get('new_broker_password', 'new'),
+            'broker_names_and_ips': self.conf.get('broker_names_and_ips',
+                                                  'test'),
+            })
+
+        os.environ['CLOUDIFY_SSL_TRUST_ALL'] = 'True'
+
+    def test_hello_world(self):
+        self._deploy_manager()
+
+        os.environ[constants.CLOUDIFY_USERNAME_ENV
+                   ] = self.conf.get('new_manager_username', 'new')
+        os.environ[constants.CLOUDIFY_PASSWORD_ENV
+                   ] = self.conf.get('new_manager_password', 'new')
+
+        self.cfy = self.cfy_connect(
+            management_ip=self.manager_public_ip,
+            port=443,
+            )
+
+        # once we've managed to connect again using `cfy use` we need to update
+        # the rest client too:
+        self.client = create_rest_client(
+            self.manager_public_ip,
+            secure=True,
+            trust_all=True,
+        )
+
+        time.sleep(120)
+
+        self._run(
+            blueprint_file='ec2-vpc-blueprint.yaml',
+            inputs={
+                'agent_user': 'ubuntu',
+                'image_id': self.conf['aws_trusty_image_id'],
+                'vpc_id': self.conf['aws_vpc_id'],
+                'vpc_subnet_id': self.conf['aws_subnet_id'],
+            },
+            influx_host_ip=self.manager_public_ip,
+        )

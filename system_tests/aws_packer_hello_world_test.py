@@ -13,35 +13,14 @@
 #    * See the License for the specific language governing permissions and
 #    * limitations under the License.
 
-import time
-
 from cosmo_tester.test_suites.test_blueprints.hello_world_bash_test import \
     AbstractHelloWorldTest
-from cosmo_tester.test_suites.test_marketplace_image_builder\
-    .abstract_packer_test import AbstractPackerTest
-from cosmo_tester.framework.cfy_helper import CfyHelper
+
+from .abstract_aws_test import AbstractAwsTest
 
 
-class AWSHelloWorldTest(AbstractPackerTest, AbstractHelloWorldTest):
-    def setUp(self):
-        super(AWSHelloWorldTest, self).setUp()
-
-        self.secure = False
-
-    def test_hello_world_aws(self):
-        self._deploy_manager()
-
-        self.cfy = CfyHelper(management_ip=self.aws_manager_public_ip)
-
-        time.sleep(120)
-
-        self._run(
-            blueprint_file='ec2-vpc-blueprint.yaml',
-            inputs={
-                'agent_user': 'ubuntu',
-                'image_id': self.conf['aws_trusty_image_id'],
-                'vpc_id': self.conf['aws_vpc_id'],
-                'vpc_subnet_id': self.conf['aws_subnet_id'],
-            },
-            influx_host_ip=self.aws_manager_public_ip,
-        )
+class AWSHelloWorldTest(
+        AbstractAwsTest,
+        AbstractHelloWorldTest,
+        ):
+    pass
