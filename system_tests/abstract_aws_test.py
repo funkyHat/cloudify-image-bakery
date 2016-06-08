@@ -62,7 +62,7 @@ class AbstractAwsTest(AbstractPackerTest):
 
         self.logger.info('initialize local env for running the '
                          'blueprint that starts a vm')
-        self.aws_manager_env = local.init_env(
+        self.manager_env = local.init_env(
             self.aws_blueprint_yaml,
             inputs=self.aws_inputs,
             name=self._testMethodName,
@@ -70,22 +70,16 @@ class AbstractAwsTest(AbstractPackerTest):
         )
 
         self.logger.info('starting vm to serve as the management vm')
-        self.aws_manager_env.execute('install',
-                                     task_retries=10,
-                                     task_retry_interval=30)
+        self.manager_env.execute('install',
+                                 task_retries=10,
+                                 task_retry_interval=30)
 
-        outputs = self.aws_manager_env.outputs()
+        outputs = self.manager_env.outputs()
         self.manager_public_ip = outputs[
             'simple_vm_public_ip_address'
         ]
 
         self.addCleanup(self._undeploy_image)
-
-    def _undeploy_image(self):
-        # Private method as it is used for cleanup
-        self.aws_manager_env.execute('uninstall',
-                                     task_retries=40,
-                                     task_retry_interval=30)
 
     def _find_image(self):
         conn = self._get_conn()

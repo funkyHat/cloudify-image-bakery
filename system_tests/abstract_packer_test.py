@@ -59,9 +59,6 @@ class AbstractPackerTest(object):
     @abstractmethod
     def deploy_image(self): pass
 
-    @abstractmethod
-    def _undeploy_image(self): pass
-
     def setUp(self):
         super(AbstractPackerTest, self).setUp()
 
@@ -408,6 +405,12 @@ class AbstractPackerTest(object):
                     self.logger.warn(
                         'Saw error {}. Retrying.'.format(str(err))
                     )
+
+    def _undeploy_image(self):
+        # Private method as it is used for cleanup
+        self.manager_env.execute('uninstall',
+                                 task_retries=40,
+                                 task_retry_interval=30)
 
     @retry(stop_max_delay=180000, wait_exponential_multiplier=1000)
     def cfy_connect(self, *args, **kwargs):
