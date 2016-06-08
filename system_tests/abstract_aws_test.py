@@ -23,6 +23,7 @@ from .abstract_packer_test import AbstractPackerTest
 
 class AbstractAwsTest(AbstractPackerTest):
     packer_build_only = 'aws'
+    hello_world_blueprint_file = 'ec2-vpc-blueprint.yaml'
 
     def setUp(self):
         super(AbstractAwsTest, self).setUp()

@@ -23,6 +23,7 @@ from .abstract_packer_test import AbstractPackerTest
 
 class AbstractOpenstackTest(AbstractPackerTest):
     packer_build_only = 'openstack'
+    hello_world_blueprint_file = 'blueprint.yaml'
 
     def _get_conn(self):
         return novaclient.Client(

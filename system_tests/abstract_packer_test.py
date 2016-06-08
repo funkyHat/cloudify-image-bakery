@@ -630,7 +630,7 @@ class AbstractSecureTest(AbstractPackerTest):
         time.sleep(120)
 
         self._run(
-            blueprint_file='ec2-vpc-blueprint.yaml',
+            blueprint_file=self.hello_world_blueprint_file,
             inputs={
                 'agent_user': 'ubuntu',
                 'image_id': self.conf['aws_trusty_image_id'],
