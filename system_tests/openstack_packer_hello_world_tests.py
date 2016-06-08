@@ -16,11 +16,19 @@
 from cosmo_tester.test_suites.test_blueprints.hello_world_bash_test import \
     AbstractHelloWorldTest
 
-from .abstract_aws_test import AbstractAwsTest
+from .abstract_openstack_test import AbstractOpenstackTest
+from .abstract_packer_test import AbstractSecureTest
 
 
-class AWSHelloWorldTest(
-        AbstractAwsTest,
+class OpenstackHelloWorldTest(
+        AbstractOpenstackTest,
         AbstractHelloWorldTest,
+        ):
+    pass
+
+
+class OpenstackHelloWorldSecureTest(
+        AbstractSecureTest,
+        OpenstackHelloWorldTest,
         ):
     pass
