@@ -15,7 +15,11 @@
 
 import json
 import os
+import paramiko
+import re
 import shutil
+import socket
+import ssl
 import subprocess
 import tempfile
 import time
@@ -43,6 +47,65 @@ SUPPORTED_ENVS = [
     'aws',
     'openstack',
 ]
+
+
+def get_ssh_host_key(host):
+    # Prepare the connection
+    conn = socket.create_connection((host, 22))
+    # Connect without trying to authenticate
+    ssh_conn = paramiko.Transport(conn)
+    ssh_conn.connect()
+
+    # Get the server key from the ssh connection
+    host_key = ssh_conn.get_remote_server_key().get_base64()
+
+    ssh_conn.close()
+    conn.close()
+    return host_key
+
+
+# Expect addr in tuple form (str-host, int-port)
+def get_ssl_cert(addr):
+    # '   Subject: C=US, ST=State, L=Ex Mple, O=Ex mpl, CN=example.com'
+    # Must have one match group to work with remaining logic
+    cn_finder = re.compile('\sCN=([^\s]+)')
+    cert = ssl.get_server_certificate(addr)
+    cert_details_process = subprocess.Popen(
+        [
+            'openssl',
+            'x509',
+            '-noout',
+            '-text',
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    cert_details = cert_details_process.communicate(cert)
+    if cert_details_process.returncode != 0:
+        raise RuntimeError('openssl failed with error: %s' % cert_details[1])
+    else:
+        cert_details = cert_details[0].splitlines()
+    cert_cn = None
+    subject_altnames_line = ''
+    for index in range(0, len(cert_details)):
+        line = cert_details[index]
+        if 'Subject: ' in line:
+            cert_cn = cn_finder.findall(line)[0]
+        elif 'X509v3 Subject Alternative Name:' in line:
+            # This is always expected to be safe if the openssl command ran
+            # successfully
+            subject_altnames_line = cert_details[index + 1]
+    subject_altnames_line = subject_altnames_line.strip()
+    subject_altnames = [
+        altname.strip()
+        for altname in subject_altnames_line.split(',')
+    ]
+    return {
+        'cert': cert,
+        'cn': cert_cn,
+        'subject_altnames': subject_altnames,
+    }
 
 
 class AbstractPackerTest(object):
@@ -331,6 +394,22 @@ class AbstractPackerTest(object):
                 # Timeout
                 pass
 
+        if self.secure:
+            self.template_key = get_ssh_host_key(self.manager_public_ip)
+            self.logger.info(
+                'Template was deployed with SSH host key: {key}'.format(
+                    key=self.template_key,
+                )
+            )
+
+            self.template_ssl_cert = get_ssl_cert(
+                (self.manager_public_ip, 443))
+            self.logger.info(
+                'Template was deployed with SSL key: {key}'.format(
+                    key=self.template_ssl_cert,
+                )
+            )
+
         self.agents_secgroup = self.conf.get(
             'system-tests-security-group-name',
             'marketplace-system-tests-security-group')
@@ -412,6 +491,32 @@ class AbstractPackerTest(object):
                                  task_retries=40,
                                  task_retry_interval=30)
 
+    def wait_for_config_to_finish(self, client, timeout=600):
+        current_time = 0
+        finished = False
+        while not finished and current_time < timeout:
+            try:
+                executions = client.executions.list().items
+            except ConnectionError:
+                if self.secure:
+                    self.logger.debug(
+                        'Connection to rest server lost, waiting for restart')
+                    return
+                raise
+            for execution in executions:
+                if (
+                    execution['deployment_id'] == 'config' and
+                    execution['workflow_id'] == 'install' and
+                    execution['status'] == 'terminated'
+                ):
+                    return
+            time.sleep(3)
+            current_time += 3
+        raise RuntimeError(
+            'config deployment install workflow did not finish in '
+            '{timeout} seconds.'.format(timeout=timeout)
+        )
+
     @retry(stop_max_delay=180000, wait_exponential_multiplier=1000)
     def cfy_connect(self, *args, **kwargs):
         self.logger.debug('Attempting to set up CfyHelper: {} {}'.format(
@@ -422,6 +527,10 @@ class AbstractPackerTest(object):
         self._deploy_manager()
 
         self.cfy = self.cfy_connect(management_ip=self.manager_public_ip)
+
+        self.logger.info('Waiting for config install workflow to finish...')
+        self.wait_for_config_to_finish(self.client)
+        self.logger.info('...workflow finished.')
 
         # once we've managed to connect again using `cfy use` we need to update
         # the rest client too:
@@ -468,17 +577,54 @@ class AbstractSecureTest(AbstractPackerTest):
         os.environ[constants.CLOUDIFY_PASSWORD_ENV
                    ] = self.conf.get('new_manager_password', 'new')
 
+        self.logger.info('Waiting for config install workflow to finish...')
+        self.wait_for_config_to_finish(self.client)
+
         self.cfy = self.cfy_connect(
             management_ip=self.manager_public_ip,
             port=443,
             )
+
+        self.logger.info('...workflow finished.')
+        post_config_key = get_ssh_host_key(self.manager_public_ip)
+        self.logger.info(
+            'Template was reconfigured with SSH host key: {key}'.format(
+                key=post_config_key,
+            )
+        )
+
+        self.assertNotEqual(
+            self.template_key, post_config_key,
+            'SSH host key did not change when configuration blueprint ran.')
+
+        post_config_cert = get_ssl_cert((self.manager_public_ip, 443))
+        self.logger.info(
+            'Template was reconfigured with SSL cert: {key}'.format(
+                key=post_config_cert,
+            )
+        )
+
+        self.assertNotEqual(
+            self.template_ssl_cert, post_config_cert,
+            'SSL certificate did not change when configuration blueprint ran.')
+
+        self.assertIn(
+            'IP Address:{}'.format(self.manager_public_ip),
+            post_config_cert['subject_altnames'],
+            'SSL certificate does not contain manager public IP.')
+
+        post_config_cert_path = os.path.join(self.base_temp_dir,
+                                             'new_ssl_cert.pem')
+        with open(post_config_cert_path, 'w') as f:
+            f.write(post_config_cert['cert'])
 
         # once we've managed to connect again using `cfy use` we need to update
         # the rest client too:
         self.client = create_rest_client(
             self.manager_public_ip,
             secure=True,
-            trust_all=True,
+            cert=post_config_cert_path,
+            trust_all=False,
         )
 
         time.sleep(120)
