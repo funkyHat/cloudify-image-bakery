@@ -620,12 +620,21 @@ class AbstractSecureTest(AbstractPackerTest):
 
         # once we've managed to connect again using `cfy use` we need to update
         # the rest client too:
+        self.logger.debug('Recreating REST client with SSL cert')
         self.client = create_rest_client(
             self.manager_public_ip,
             secure=True,
             cert=post_config_cert_path,
             trust_all=False,
         )
+
+        self.logger.debug('Reconnectiong cli client with SSL cert')
+        del os.environ['CLOUDIFY_SSL_TRUST_ALL']
+        os.environ['CLOUDIFY_SSL_CERT'] = post_config_cert_path
+        self.cfy = self.cfy_connect(
+            management_ip=self.manager_public_ip,
+            port=443,
+            )
 
         time.sleep(120)
 
