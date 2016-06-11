@@ -140,11 +140,8 @@ class AbstractOpenstackTest(AbstractPackerTest):
                                  task_retry_interval=30)
 
         outputs = self.manager_env.outputs()
-        self.openstack_manager_public_ip = outputs[
+        self.manager_public_ip = outputs[
             'simple_vm_public_ip_address'
-        ]
-        self.openstack_manager_private_ip = outputs[
-            'simple_vm_private_ip_address'
         ]
 
         self.addCleanup(self._undeploy_image)
