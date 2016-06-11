@@ -26,6 +26,33 @@ class AbstractOpenstackTest(AbstractPackerTest):
     packer_build_only = 'openstack'
     hello_world_blueprint_file = 'blueprint.yaml'
 
+    def setUp(self):
+        super(AbstractOpenstackTest, self).setUp()
+
+        safe_chars = set("_- " + string.digits + string.ascii_letters)
+        # From nova/compute/api.py
+        self.assertTrue(
+            set(self.agents_secgroup) <= safe_chars,
+            '"Unsafe" chars used in keypair name.')
+
+        self.config_inputs.update({
+            'user_ssh_key': self.conf['openstack_ssh_keypair_name'],
+            'agents_security_group_name': self.agents_secgroup,
+            'agents_keypair_name': self.agents_keypair,
+            'agents_user': self.conf.get('openstack_agents_user', 'ubuntu'),
+            'openstack_username': self.conf['keystone_username'],
+            'openstack_password': self.conf['keystone_password'],
+            'openstack_auth_url': self.conf['keystone_url'],
+            'openstack_tenant_name': self.conf['keystone_tenant_name'],
+            'openstack_region': self.conf['region'],
+            })
+
+        self.hello_world_inputs = {
+            'agent_user': 'ubuntu',
+            'image': self.env.ubuntu_trusty_image_name,
+            'flavor': self.env.flavor_name
+        }
+
     def _get_conn(self):
         return novaclient.Client(
             username=self.env.cloudify_config['keystone_username'],

@@ -35,6 +35,13 @@ class AbstractAwsTest(AbstractPackerTest):
             'aws_secret_key': self.conf['aws_secret_key'],
             })
 
+        self.hello_world_inputs = {
+            'agent_user': 'ubuntu',
+            'image_id': self.conf['aws_trusty_image_id'],
+            'vpc_id': self.conf['aws_vpc_id'],
+            'vpc_subnet_id': self.conf['aws_subnet_id'],
+        }
+
     def _get_conn(self):
         return boto.ec2.EC2Connection(
             aws_access_key_id=self.env.cloudify_config[

@@ -546,12 +546,7 @@ class AbstractPackerTest(object):
 
         self._run(
             blueprint_file='ec2-vpc-blueprint.yaml',
-            inputs={
-                'agent_user': 'ubuntu',
-                'image_id': self.conf['aws_trusty_image_id'],
-                'vpc_id': self.conf['aws_vpc_id'],
-                'vpc_subnet_id': self.conf['aws_subnet_id'],
-            },
+            inputs=self.hello_world_inputs,
             influx_host_ip=self.manager_public_ip,
         )
 
@@ -646,11 +641,6 @@ class AbstractSecureTest(AbstractPackerTest):
 
         self._run(
             blueprint_file=self.hello_world_blueprint_file,
-            inputs={
-                'agent_user': 'ubuntu',
-                'image_id': self.conf['aws_trusty_image_id'],
-                'vpc_id': self.conf['aws_vpc_id'],
-                'vpc_subnet_id': self.conf['aws_subnet_id'],
-            },
+            inputs=self.hello_world_inputs,
             influx_host_ip=self.manager_public_ip,
         )
