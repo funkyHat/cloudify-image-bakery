@@ -13,6 +13,7 @@
 #    * See the License for the specific language governing permissions and
 #    * limitations under the License.
 import os
+import string
 
 from cloudify.workflows import local
 from cloudify_cli import constants as cli_constants
