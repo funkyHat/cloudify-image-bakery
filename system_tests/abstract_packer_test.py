@@ -122,6 +122,12 @@ class AbstractPackerTest(object):
     @abstractmethod
     def deploy_image(self): pass
 
+    @abstractmethod
+    def _delete_agents_keypair(self): pass
+
+    @abstractmethod
+    def _delete_agents_secgroup(self): pass
+
     def setUp(self):
         super(AbstractPackerTest, self).setUp()
 

@@ -125,3 +125,15 @@ class AbstractOpenstackTest(AbstractPackerTest):
         conn = self._get_conn()
         image = conn.images.find(id=image_id)
         image.delete()
+
+    def _delete_agents_keypair(self):
+        conn = self._get_conn()
+        keypair = conn.keypairs.find(name=self.agents_keypair)
+        keypair.delete()
+
+    def _delete_agents_secgroup(self):
+        conn = self._get_conn()
+        secgroup = conn.security_groups.find(
+            name=self.agents_secgroup
+        )
+        secgroup.delete()
